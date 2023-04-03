@@ -1,14 +1,17 @@
-type operator = Soma | Subt| Mult | Div | Ig | IgMen | Men | IgMai | Mai | Or | And 
+type operator = Soma | Subt| Mult | Div | Ig | IgMen | Men | IgMai | Mai | Or | And | Nig
 
 type ident = string (* identificador, variavel x *)
   
 type tipo  = TyInt | TyBool | TyIdent of ident | TyFn of tipo * tipo | TyList of tipo | TyPair of tipo * tipo | TyMaybe of tipo
                                                  (*  T1 --> T2 *)      (* T list *)       (* T1 * T2 *)        (* maybe T *)
                
-  
+                                                              
+                 (* Além das definidas na especificação do trabalho, coloquei Raise, Not e IsEmpty *)
+
 type expr = Num of int
           | Bool of bool
-          | Oper of operator * expr * expr  (* e1 o e2 *)
+          | Oper of operator * expr * expr  (* e1 op e2 *)
+          | Not of expr  (* not e1 *)                                  
           | IfElse of expr * expr * expr     (* if e1 then e2 else e3 *) 
           | VarIdent of ident     (* x *)
           | App of expr * expr  (* e1 e2 *)
@@ -20,7 +23,7 @@ type expr = Num of int
           | Snd of expr (* snd e *) 
           | IsEmpty of expr (* isEmpty e *)       
           | Nil 
-                (*| Nil of tipo (* nil : T *) *)
+          | Raise
           | Cons of expr * expr (* e1 :: e2 *) 
           | Hd of expr  (* hd e *) 
           | Tl of expr  (* tl e *)
@@ -28,6 +31,9 @@ type expr = Num of int
           | Just of expr (* just e *)
           | Nothing of tipo  (* nothing : T *) 
           | MatchNothJust of expr * expr * ident * expr  (* match e1 with nothing ⇒ e2  |just x => e3)  *) 
+                                                         
+                            
+              (* As últimas 4 expressões não foram implementadas *)                                       
                                                          
                                                          
 type value = Vnum of int
@@ -103,7 +109,7 @@ let collectTyEqs env expr = let varCount = ref (-1) in
         (TyInt, c1 @ c2 @ [(t1, TyInt); (t2, TyInt)])
     
     (* C-<Oper>, onde <Oper> é uma operação Int x Int -> Bool *)
-    | Oper ((Ig | Men | Mai | IgMen | IgMai), 
+    | Oper ((Ig | Nig | Men | Mai | IgMen | IgMai ), 
             e1, e2) ->
         let (t1, c1) = collect env e1 in
         let (t2, c2) = collect env e2 in
@@ -114,6 +120,11 @@ let collectTyEqs env expr = let varCount = ref (-1) in
         let (t1, c1) = collect env e1 in
         let (t2, c2) = collect env e2 in
         (TyBool, c1 @ c2 @ [(t1, TyBool); (t2, TyBool)])
+          
+   (* C-Not *)
+    | Not e ->
+        let (t, c) = collect env e in
+        (TyBool, c @ [(t, TyBool)])
   
     (* C-IfElse *)
 
@@ -184,6 +195,11 @@ let collectTyEqs env expr = let varCount = ref (-1) in
         let (t, c) = collect env e in
         let x = newTypeVar () in
         (TyBool, c @ [(t, TyList x)])
+        
+      (* C-Raise *)
+    | Raise ->
+        let x = newTypeVar () in
+        (x, [])    
     
         
   
@@ -269,28 +285,6 @@ let unify eqs =
     
 
 
-
-
-
-(* SUBSTITUI AS VARIAVEIS DE TIPO CORRESPONDENTES *)    
-
-type substMapping  = ident * tipo
-type substituition = substMapping list
-
-let rec applySubstMapping (x, tSub) t = match t with
-  | TyIdent y when y = x -> tSub
-  | TyIdent y            -> TyIdent y
-  | TyInt              -> TyInt
-  | TyBool             -> TyBool
-  | TyFn (t1, t2)      -> TyFn (applySubstMapping (x, tSub) t1,
-                                applySubstMapping (x, tSub) t2)
-  | TyList t           -> TyList (applySubstMapping (x, tSub) t)
-
-let rec applySubs subs t = match subs with
-  | []              -> t
-  | mapping :: tail -> applySubs tail (applySubstMapping mapping t) 
-                         
-  
 (* ------------------------------ *)
 (* ------------------------------ *)
 (* FIM DAS FUNÇÕES AUXILIARES TYPE INFER *)
@@ -312,7 +306,7 @@ let typeInfer env expr =
 
 
 
-    (*  BIG STEP *)
+    (*  AVALIADOR BIG STEP *)
 
 
 (* Excecao a ser ativada quando nenhuma regra se aplica. *)
@@ -337,7 +331,8 @@ let lookup_environment = List.assoc
 let empty_env : env = []
 
 let rec eval (env:env) (exp : expr) : value =	match exp with
-	(* Valores *)
+
+  (* Valores *)
     Num(n) -> Vnum(n)
   | Bool(b) -> Vbool(b)
 
@@ -364,12 +359,20 @@ let rec eval (env:env) (exp : expr) : value =	match exp with
            | Ig,Vnum(n1),Vnum(n2) -> Vbool(n1 == n2)
            | And,Vbool(n1),Vbool(n2) -> Vbool(n1 && n2)
            | Or,Vbool(n1),Vbool(n2) -> Vbool(n1 || n2) 
+           | Nig,Vnum(n1),Vnum(n2) -> Vbool(n1 != n2)                               
            | Men,Vnum(n1),Vnum(n2) -> Vbool(n1 < n2)
            | Mai,Vnum(n1),Vnum(n2) -> Vbool(n1 > n2)
            | IgMen,Vnum(n1),Vnum(n2) -> Vbool(n1 <= n2)
            | IgMai,Vnum(n1),Vnum(n2) -> Vbool(n1 >= n2)
            | _,_,_ -> raise NoRuleApplies
           )
+          
+  (* Not *)
+  | Not(e1) ->
+      let v1 = eval env e1 in
+      if v1 = RRaise then RRaise
+      else if v1 = Vbool(true) then Vbool(false)
+      else Vbool(true)        
   
 
 	(* IfElse *)
@@ -451,38 +454,309 @@ let rec eval (env:env) (exp : expr) : value =	match exp with
         (match v with Vcons(e1, e2) -> e1
                     | _ -> raise NoRuleApplies
         )
+        
+  (* Tl *)
+  | Tl(l) ->
+      let v = eval env l in
+      if v = RRaise || v = Vnil then RRaise else
+        (match v with Vcons(e1, e2) -> e2
+                    | _ -> raise NoRuleApplies
+        )
+        
+  (* Raise *)
+  | Raise -> RRaise      
 
   
   (* ALGUNS TESTES DA BIG STEP *)
 
+
+
 let environment = empty_env;;
+
+
 
 	(* Testes - cada um corresponde à uma regra da semântica BIG-STEP *)
 
-	(* BS-NUM *)
-let numAccept = Num(7);;
-let eval = eval environment numAccept;;
+
+(* BS-NUM *)
+let numEx1 = Num(7);;
+let evaln = eval environment numEx1;;
 
 	(* BS-BOOL *)
-let boolAccept = Bool(true);;
-let eval = eval environment boolAccept;;
+let boolEx1 = Bool(true);;
+let evalb = eval environment boolEx1;;
 
-(* BS-OPDIV *)
-let divAccept = Oper(Div,Num(4),Num(2));;
-let eval = eval environment divAccept;;
-  
-
-(* BS-OP+ *)
-let sumAccept = Oper(Soma,Num(1),Num(1));;
-let eval = eval environment sumAccept;;
-
+	(* BS-BOOL *)
+let boolEx2 = Bool(false);;
+let evalbb = eval environment boolEx2;;
 
 (* BS-OPMULT *)
-let sumAccept = Oper(Mult,Num(2),Num(3));;
-let eval = eval environment sumAccept;;
+let mulEx1 = Oper(Mult,Num(2),Num(3));;
+let evalm = eval environment mulEx1;;
+
+(* BS-OPMULT *)
+let multEx2 = Oper(Mult,Num(0),Num(5));;
+let evalmm  = eval environment multEx2;;
+
+(* BS-OPDIV *)
+let divEx1 = Oper(Div,Num(4),Num(2));;
+let evald = eval environment divEx1;;
+  
+(* BS-OPDIV *)
+let divEx2 = Oper(Div,Num(15),Num(3));;
+let evaldd = eval environment divEx2;;
+  
+(* BS-OP+ *)
+let somEx1 = Oper(Soma,Num(1),Num(13));;
+let evals = eval environment somEx1;;
+
+
+(* testando update_env *)
+let env = update_env "numAccept" (Vnum(7)) environment;;
+lookup_environment "numAccept" env;;
+
+
+(** Teste Let Rec com fatorial **)
+
+let fat =
+  LetRec ("fat", TyInt, TyInt, "n", TyInt, 
+          IfElse (Oper (Ig, VarIdent "n", Num 0),
+                  Num 1,
+                  Oper(Mult, VarIdent "n", App (VarIdent "fat", Oper (Men, VarIdent "n", Num 1)))),
+          VarIdent "fat");;
+
+let progFat = App (fat, Num 3);; 
+let evalpf = eval environment progFat;;
+
+    
+  
+(** Teste Let Rec com RAISE e com fatorial **)
+
+
+let lrecRaise = LetRec ("fat", TyInt, TyInt, "n", TyInt, IfElse (Oper (Ig, VarIdent "n", Num 0),
+                                                                 Num 1,
+                                                                 Oper (Mult, VarIdent "n", App (VarIdent "fat", Oper (Subt, VarIdent "n", Num 1)))), Raise);;
+let evalLrecRaise = eval environment lrecRaise;;
+
+  
+
+(* BS-OP==TR *)
+let eqAccept = Oper(Ig,Num(2),Num(2));;
+let evalEqAccept = eval environment eqAccept;;
+
+(* BS-OP==FLS *)
+let eqReject = Oper(Ig,Num(2),Num(3));;
+let evalEqReject = eval environment eqReject;;
+
+
+	(* BS-OPANDTR *)
+let andTrue = Oper(And,Bool(true),Bool(true));;
+let evalAndTrue = eval environment andTrue;;
+  
+	(* BS-OPANDFLS *)
+
+let andFalse = Oper(And,Bool(true),Bool(false));;
+let evalAndFalse = eval environment andFalse;;
+
+
+(* BS-IFTR *)
+let ifTrue = IfElse(Oper(Ig,Num(1),Num(1)),Bool(true),Bool(false));;
+let evalIfTrue = eval environment ifTrue;;
+  
+	(* BS-IFFLS *)
+let ifFalse = IfElse(Oper(Ig,Num(1),Num(2)),Bool(true),Bool(false));;
+let evalIfFalse = eval environment ifFalse;;
+
+
+(* BS-FN *)
+let funcAccept = Fn("x", TyInt ,Oper(Soma,VarIdent "x",Num(1)));;
+let evalFuncAccept = eval environment funcAccept;;
+
+
+	(* BS-LET x = x + 1*)
+let letAccept = Let("x", TyInt ,Num(1), Oper(Soma,VarIdent("x"),Num(1)));;
+let evalLetAccept = eval environment letAccept;;
 
 
 
+	(* BS-APP x = x + 1 <---- x = 4 RESULTADO = X = 4 + 1*)
+let appAccept = App(Fn("x", TyInt ,Oper(Soma,VarIdent "x",Num(1))),Num(4));;
+let evalAppAccept = eval environment appAccept;;
+
+
+let empty_env : env = [];;
+	(* Nome da regra - Teste *)
+	(* Teste Nil *)
+	(* BS-NIL *)
+
+let exp = Nil;;
+eval empty_env exp;;
+
+	(* Testes listas *)
+	(* BS-CONS *)
+let exp = Cons(Num(1), Nil);;
+eval empty_env exp;;
+
+
+(* BS-ISEMPTYNIL *)
+let exp = IsEmpty(Nil);;
+eval empty_env exp;;
+
+	(* BS-ISEMPTYCONS *)
+let exp = IsEmpty(Cons(Num(1), Nil));;
+eval empty_env exp;;
+
+
+	(* BS-HDNIL *)
+let exp = Hd(Nil);;
+eval empty_env exp;;
+
+	(* BS-HDCONS *)
+let exp = Hd(Cons(Num(2), Cons(Num(1), Nil)));;
+eval empty_env exp;;
+
+
+	(* BS-TLNIL *)
+let exp = Tl(Nil);;
+eval empty_env exp;;
+
+	(* BS-TLCONS *)
+let exp = Tl(Cons(Num(1), Nil));;
+eval empty_env exp;;
+
+
+
+(* TESTE MAP *)
+
+let progMap =
+  LetRec ("map", TyFn (TyInt, TyInt), TyFn (TyList TyInt, TyList TyInt),
+          "f", TyFn (TyInt, TyInt),
+          Fn("l", TyList TyInt,
+             IfElse (Not (IsEmpty (VarIdent "l")),
+                     Cons (App (VarIdent "f", Hd (VarIdent "l")), App (App (VarIdent "map", VarIdent "f"), Tl (VarIdent "l"))),
+                     Nil)),
+          Let ("inc", TyFn (TyInt, TyInt),
+               Fn("n", TyInt, Oper (Soma, VarIdent "n", Num 1)),
+               App (App (VarIdent "map", VarIdent "inc"), Cons (Num 0, Cons (Num 1, Nil)))));;
+    
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+(* TESTE DE OUTRAS EXPRESSÕES, PORÉM UTILIZANDO RAISE *)
+
+(* BS-OP+RS1 *)
+let sumRaise1 = Oper(Soma,Raise,Num(3));;
+let evalSumRaise1 = eval environment sumRaise1;;
+
+(* BS-OP+RS2 *)
+let sumRaise2 = Oper(Soma,Num(2),Raise);;
+let evalSumRaise2 = eval environment sumRaise2;;
+
+(* BS-OPDIVRS1 *)
+let divRaise1 = Oper(Div,Raise,Num(3));;
+let evalDivRaise1 = eval environment divRaise1;;
+  
+	(* BS-OPDIVRS2 *)
+let divRaise2 = Oper(Div,Num(2),Raise);;
+let evalDivRaise2 = eval environment divRaise2;;
+
+
+	(* BS-OPDIVZERO *)
+let divRaise0 = Oper(Div,Num(3),Num(0));;
+let evalDivRaise0 = eval environment divRaise0;;
+
+
+(* BS-OP==RS1 *)
+let eqRaise1 = Oper(Ig,Raise,Num(2));;
+let evalEqRaise1 = eval environment eqRaise1;;
+  
+	(* BS-OP==RS2 *)
+let eqRaise2 = Oper(Ig,Num(2),Raise);;
+let evalEqRaise2 = eval environment eqRaise2;;
+
+
+	(* BS-OPANDRS1 *)
+let andRaise1 = Oper(And,Raise,Bool(true));;
+let evalAndRaise1 = eval environment andRaise1;;
+  
+	(* BS-OPANDRS2 *)
+let andRaise2 = Oper(And,Bool(true),Raise);;
+let evalAndRaise2 = eval environment andRaise2;;
+
+
+	(* BS-OPNOTRS *)
+let notRaise = Not(Raise);;
+let evalNotRaise = eval environment notRaise;;
+
+(* BS-IFRS1 *)
+let ifRaise1 = IfElse(Raise,Bool(true),Bool(false));;
+let evalIfRaise1 = eval environment ifRaise1;;
+  
+	(* BS-IFRS2 *)
+let ifRaise2 = IfElse(Oper(Ig,Num(1),Num(1)),Raise,Bool(false));;
+let evalIfRaise2 = eval environment ifRaise2;;
+
+
+(* BS-LETRS1 *)
+let letRaise1 = Let("x", TyInt ,Raise, Oper(Soma,VarIdent("x"),Num(1)));;
+let evalLetRaise1 = eval environment letRaise1;;
+  
+	(* BS-LETRS2 *)
+let letRaise2 = Let("x", TyInt ,Num(1), Raise);;
+let evalLetRaise2 = eval environment letRaise2;;
+
+
+(* BS-APPRS1 *)
+let appRaise1 = App(Raise,Num(4));;
+let evalAppRaise1 = eval environment appRaise1;;
+  
+	(* BS-APPRS2 *)
+let appRaise2 = App(Fn("x", TyInt ,Oper(Soma,VarIdent "x",Num(1))),Raise);;
+let evalAppRaise2 = eval environment appRaise2;;
+  
+
+(* BS-CONSRS1 *)
+let exp = Cons(Raise, Nil);;
+eval empty_env exp;;
+
+	(* BS-CONSRS2 *)
+let exp = Cons(Num(1), Raise);;
+eval empty_env exp;;
+
+
+(* BS-ISEMPTYRS *)
+let exp = IsEmpty(Raise);;
+eval empty_env exp;;
+
+
+(* BS-RAISE *)
+let exp = Raise;;
+eval empty_env exp;;
+
+
+	(* BS-HDRS *)
+let exp = Hd(Raise);;
+eval empty_env exp;;
+
+
+(* BS-TLRS *)
+let exp = Tl(Raise);;
+eval empty_env exp;;
 
 
 
