@@ -114,6 +114,8 @@ type typeConstraintSet = typeConstraint list (* conjunto de type constraints *)
   
 type typeEnv = (ident * tipo) list 
 
+let emptyEnvTyInf : typeEnv = []
+
   
 exception UndefinedIdentifier of ident  (* Temos como erro/exceção na etapa 1 “Undefined Identifier”, que é acionada caso, na hora de percorrermos a AST, exista um identificador não-declarado. *)
 
@@ -824,3 +826,20 @@ eval empty_env exp;;
 (* BS-TLRS *)
 let exp = Tl(Raise);;
 eval empty_env exp;;
+
+(* TESTE MOODLE 1 *)
+let tst1 = Let("x",TyInt,Num(2),
+               Let("foo",TyFn(TyInt,TyInt),Fn("y",TyInt,Oper(Soma,VarIdent("x"),VarIdent("y"))),
+                   Let("x",TyInt,Num(5),App(VarIdent("foo"),Num(10)))));;
+
+typeInfer emptyEnvTyInf tst1;; 
+eval empty_env tst1;;
+
+
+(* TESTE MOODLE 2 *)
+let tst2 = Let("x",TyInt,Num(2),
+               Let("foo",TyFn(TyInt,TyInt),Fn("y",TyInt,Oper(Soma,VarIdent("x"),VarIdent("y"))),
+                   Let("x",TyInt,Num(5),VarIdent("foo"))));;
+
+typeInfer emptyEnvTyInf tst2;; 
+eval empty_env tst2;;
