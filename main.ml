@@ -1,7 +1,7 @@
 
 (* Inicialmente definimos os types do Ocaml que vão ser utlizado. 
 A gente separou todos os operadores em um type separado chamado operator. 
-  Além dos operadores que estavam na especificação do trabalho, eu implementei o Nig (Não igual) *)
+  Além dos operadores que estavam na especificação do trabalho, eu implementei o Nig (Não igual)  *)
 
 type operator = Soma | Subt| Mult | Div | Ig | IgMen | Men | IgMai | Mai | Or | And | Nig
                 
