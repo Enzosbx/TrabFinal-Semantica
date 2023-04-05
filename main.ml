@@ -3,8 +3,6 @@
 A gente separou todos os operadores em um type separado chamado operator. 
   Além dos operadores que estavam na especificação do trabalho, eu implementei o Nig (Não igual) *)
 
-
-
 type operator = Soma | Subt| Mult | Div | Ig | IgMen | Men | IgMai | Mai | Or | And | Nig
                 
  (* Após isso definimos o identificador ident, que será um string, e os tipos da linguagem L1 propriamente ditos (Int, Bool, Ident, Fn, List ….) *)                
@@ -82,8 +80,8 @@ and env = (ident * value) list  (* ambiente é uma lista de pares identificador 
 
 
     (* C = Conjuntos de equações de tipo *)
-    (* T é um tipo, com tlvz variaveis de tipo *)
-    (* e é uma expressão da linguagem L1 *)
+    (* T é um tipo, com possivelmente variaveis de tipo *)
+    (* 'e' é uma expressão da linguagem L1 *)
     (* env é um ambiente de tipo mapeando variáveis declaradas para seus tipos *)
         
 
@@ -91,7 +89,6 @@ and env = (ident * value) list  (* ambiente é uma lista de pares identificador 
 
     (* Basicamente, são pares (T1:tipo, T2:tipo), em que T1 é o tipo inferido e T2 o esperado.
    É necessário que, para que a inferência seja correta, T1 = T2. Temos também os Sets, que são conjuntos de TypeConstraints *)
-  
   
    
    (* um par (T1, T2) representa T1 = T2, onde T1 é considerado o tipo inferido
@@ -106,22 +103,21 @@ type typeConstraintSet = typeConstraint list (* conjunto de type constraints *)
 
     
 
-   (* Basicamente, percorremos a AST de entrada para obter conjuntos de equações de tipo, que representam os constraints acima. (restrições). 
-   Após isso, a gente precisa resolver as equações de tipo. *)
+   (* Basicamente, percorremos a AST de entrada para obter conjuntos de equações de tipo, que representam os constraints acima (restrições),
+   ou seja, são representadas por uma lista de pares de tipos.
+   Após isso, a gente precisa resolver as equações de tipo, na etapa 2. *)
 
     (* os constrainsts serão tratados na função Unify *)
 
   
 type typeEnv = (ident * tipo) list 
 
-let emptyEnvTyInf : typeEnv = []
-
   
 exception UndefinedIdentifier of ident  (* Temos como erro/exceção na etapa 1 “Undefined Identifier”, que é acionada caso, na hora de percorrermos a AST, exista um identificador não-declarado. *)
 
 
 let lookup = List.assoc  (* Função lookup (environment) usada nos testes: retorna o valor associado a uma chave em uma lista de pares (chave, valor) *)
-                          (* ex: em um ambiente, com Vnum(7), retorna que é o valor 7 do tipo Vnum*)
+                          (* ex: em um ambiente, com Vnum(7), retorna que é o valor 7 do tipo Vnum *)
   
                
     (* A função collectTyEqs É basicamente uma função que, dentro dela, tem uma recursiva collect, que faz o pattern matching entre as expressões e seus tipos *)
@@ -141,7 +137,7 @@ let collectTyEqs env expr = let varCount = ref (-1) in
     (* C-Num *)
     | Num (_) ->
         (TyInt, [])                     (* Abaixo, estão todas as regras de coleta de equações de tipo, como especificadas nos slides *)
-                        (* Por exemplo, Num é TyInt, Bool é TyBool, as operações 'Oper' vão depender dos operadores e1 e e2 (se é operação Int x Int -> Int ou     
+                              (* Por exemplo, Num é TyInt, Bool é TyBool, as operações 'Oper' vão depender dos operadores e1 e e2 (se é operação Int x Int -> Int ou     
                                       Int x Int --> Bool, etc.... *)
     (* C-Bool *)
     | Bool (_) ->
@@ -254,7 +250,10 @@ let collectTyEqs env expr = let varCount = ref (-1) in
     
     (* ETAPA 2 - DESMEMBRADA DO UNIFY DOS SLIDES *)
 
-    (* Objetivo - solucionar o conjunto C de equações de tipos - representadas por uma lista de pares de tipos - da etapa 1 *)
+   
+   (* Objetivo - solucionar o conjunto C de equações de tipos  da etapa 1.• Se não houver como resolver o conjunto C de equações de tipos isso
+           significa que não é possivel satisfazer todas as restrições de tipo coletadas. O programa submetido é portanto, considerado mal tipado.
+*)
   
   
     (* ETAPA 2.1 - ALGORITMO DE SUBSTITUIÇÃO DE VARIAVEIS DE TIPO *)
@@ -282,15 +281,18 @@ let rec applySubs subs t = match subs with
 
 
 
-    (* ETAPA 2.2 - UNIFY *)           (* Por fim, temos a função propriamente dita Unify, que une os resultados da etapa 1 e da etapa 2.1, ou seja, pega a substituição de tipo da etapa 2, e o tipo
-                                  T produzido na etapa 1, e aplica a substituição de tipo para esse tipo T' final do programa *)
+    (* ETAPA 2.2 - UNIFY *) 
+                           
+   (* Por fim, temos a função propriamente dita Unify, que une os resultados da etapa 1 e da etapa 2.1, ou seja, pega a substituição de tipo da etapa 2, e o tipo
+                                  T produzido na etapa 1, e aplica a substituição de tipo para esse tipo T. Isso resulta em um tipo T', que será o final do programa *)
+                         (* Para isso, o unify será chamado na função type infer *)
                       
   
 exception OccursCheckError of ident * tipo
 exception UnificationError of typeConstraint
                                                          
 let unify eqs =                                    (* Há casos em que não é possivel satisfazer todas as restrições de tipo coletadas,
-                                                    aí programa submetido ao typeInfer é portanto, considerado mal tipado (aciona exceções acima ) *)
+                                                    aí o programa submetido ao typeInfer é portanto, considerado mal tipado (aciona exceções acima ) *)
                                                        
                                                  (*   A unificação, se não falhar, retorna a substituição mais geral que
                                                          torna verdadeira todos as equações de tipo C *)
@@ -356,7 +358,7 @@ let unify eqs =                                    (* Há casos em que não é p
 
 (* TYPE INFER *)
                                    
-let typeInfer env expr =                  (* Type Infer, que chama às substituições de tipo (etapa 1) e depois o unify (etapa 2 *)
+let typeInfer env expr =                  (* Type Infer, que chama à coleta das equações de tipo (etapa 1) e depois o unify (etapa 2 *)
   let (t, c) = collectTyEqs env expr in   
   let subs = unify c in
   applySubs subs t
@@ -533,18 +535,8 @@ let rec eval (env:env) (exp : expr) : value =	match exp with      (* Aqui temos 
 let environment = empty_env;;
 
 
-
 	(* Testes - cada um corresponde à uma regra da semântica BIG-STEP *)
 
-
-let progFat =
-  LetRec ("fat", TyInt, TyInt, "n", TyInt, 
-          IfElse (Oper (Ig, VarIdent "n", Num 0),
-                  Num 1,
-                  Oper(Mult, VarIdent "n", App (VarIdent "fat", Oper (Subt, VarIdent "n", Num 1)))),
-          App (VarIdent "fat", Num 3))
-    
-    
 
 (* BS-NUM *)
 let numEx1 = Num(7);;
@@ -589,14 +581,13 @@ lookup_environment "numAccept" env;;
 
 (** Teste Let Rec com fatorial **)
 
-let fat =
+let progFat =
   LetRec ("fat", TyInt, TyInt, "n", TyInt, 
           IfElse (Oper (Ig, VarIdent "n", Num 0),
                   Num 1,
-                  Oper(Mult, VarIdent "n", App (VarIdent "fat", Oper (Men, VarIdent "n", Num 1)))),
-          VarIdent "fat");;
+                  Oper(Mult, VarIdent "n", App (VarIdent "fat", Oper (Subt, VarIdent "n", Num 1)))),
+          App (VarIdent "fat", Num 3))
 
-let progFat = App (fat, Num 3);; 
 
   
 (** Teste Let Rec com RAISE e com fatorial **)
@@ -708,24 +699,8 @@ let progMap =
                Fn("n", TyInt, Oper (Soma, VarIdent "n", Num 1)),
                App (App (VarIdent "map", VarIdent "inc"), Cons (Num 0, Cons (Num 1, Nil)))));;
     
-    
+  
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
 (* TESTE DE OUTRAS EXPRESSÕES, PORÉM UTILIZANDO RAISE *)
 
 (* BS-OP+RS1 *)
@@ -826,20 +801,3 @@ eval empty_env exp;;
 (* BS-TLRS *)
 let exp = Tl(Raise);;
 eval empty_env exp;;
-
-(* TESTE MOODLE 1 *)
-let tst1 = Let("x",TyInt,Num(2),
-               Let("foo",TyFn(TyInt,TyInt),Fn("y",TyInt,Oper(Soma,VarIdent("x"),VarIdent("y"))),
-                   Let("x",TyInt,Num(5),App(VarIdent("foo"),Num(10)))));;
-
-typeInfer emptyEnvTyInf tst1;; 
-eval empty_env tst1;;
-
-
-(* TESTE MOODLE 2 *)
-let tst2 = Let("x",TyInt,Num(2),
-               Let("foo",TyFn(TyInt,TyInt),Fn("y",TyInt,Oper(Soma,VarIdent("x"),VarIdent("y"))),
-                   Let("x",TyInt,Num(5),VarIdent("foo"))));;
-
-typeInfer emptyEnvTyInf tst2;; 
-eval empty_env tst2;;
