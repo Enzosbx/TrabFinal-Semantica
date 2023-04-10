@@ -1,7 +1,7 @@
 
-(* Inicialmente definimos os types do Ocaml que vão ser utlizado. 
+(* Inicialmente definimos os types do Ocaml que vão ser utlizados. 
 A gente separou todos os operadores em um type separado chamado operator. 
-  Além dos operadores que estavam na especificação do trabalho, eu implementei o Nig (Não igual)  *)
+  Além dos operadores que estavam na especificação do trabalho, eu implementei o Nig (Não igual) *)
 
 type operator = Soma | Subt| Mult | Div | Ig | IgMen | Men | IgMai | Mai | Or | And | Nig
                 
@@ -10,14 +10,14 @@ type operator = Soma | Subt| Mult | Div | Ig | IgMen | Men | IgMai | Mai | Or | 
 type ident = string (* identificador, variavel x *)
   
                     
-    (* Depois temos as expressões da linguagem L1. 
-   Conseguimos implementar todas, com exceção das 4 últimas (Match Nil, Just, Nothing, MatchNoth,Just) e do Pair. 
+    (* Depois temos as os tipos e expressões da linguagem L1. 
+   Conseguimos implementar todas as expressões, com exceção das 4 últimas (Match Nil, Just, Nothing, MatchNoth) e do Pair. 
    Além disso, incluímos duas expressões mais simples, o Not e o IsEmpty *)
 
   
 type tipo  = TyInt | TyBool | TyIdent of ident | TyFn of tipo * tipo | TyList of tipo | TyPair of tipo * tipo | TyMaybe of tipo
                                                  (*  T1 --> T2 *)      (* T list *)       (* T1 * T2 *)        (* maybe T *)
-               
+                                             
                                                               
                  (* Além das definidas na especificação do trabalho, coloquei Raise, Not e IsEmpty *)
 
@@ -48,8 +48,8 @@ type expr = Num of int
                             
               (* As últimas 4 expressões não foram implementadas *)                                       
   
-(*   Para o avaliador big step, que retorna um valor, utilizamos os valores acima como possíveis resultados. 
-     Vclos representa o resultado de uma avaliação da expressão App, que sabemos que (segundo a linguagem L1) avalia para um closure, com o identificador (ident), corpo (expr) e ambiente (env). 
+(*   Para o avaliador big step, que retorna um valor, utilizamos os valores abaixo como possíveis resultados. 
+     Vclos representa o resultado de uma avaliação da expressão App e Fn, que sabemos que (segundo a linguagem L1) avalia para um closure, com o identificador (ident), corpo (expr) e ambiente (env). 
      E Vrclos é o closure para funções recursivas (Let Rec), em que o primeiro ident é o nome da função recursiva, 
      o segundo ident é o argumento da função anônima associada à função recursiva, expr é o corpo dessa função anônima e env é o ambiente da declaração da função recursiva. *)
                                (* Além disso temos  o valor RRaise, que é o resultado para expressões em que alguma exceção deve ser acionada.   *)                                               
@@ -82,7 +82,7 @@ and env = (ident * value) list  (* ambiente é uma lista de pares identificador 
     (* C = Conjuntos de equações de tipo *)
     (* T é um tipo, com possivelmente variaveis de tipo *)
     (* 'e' é uma expressão da linguagem L1 *)
-    (* env é um ambiente de tipo mapeando variáveis declaradas para seus tipos *)
+    (* env é um ambiente de tipo mapeando variáveis declaradas - identificadores - para seus tipos *)
         
 
     (* CONSTRAINTS --> Restrições de tipo *)   
@@ -111,19 +111,22 @@ type typeConstraintSet = typeConstraint list (* conjunto de type constraints *)
 
   
 type typeEnv = (ident * tipo) list 
+    
+    
+let emptyEnvTyInf : typeEnv = []
 
   
 exception UndefinedIdentifier of ident  (* Temos como erro/exceção na etapa 1 “Undefined Identifier”, que é acionada caso, na hora de percorrermos a AST, exista um identificador não-declarado. *)
 
 
-let lookup = List.assoc  (* Função lookup (environment) usada nos testes: retorna o valor associado a uma chave em uma lista de pares (chave, valor) *)
+let lookup = List.assoc  (* Função lookup (environment) usada nos testes: retorna o valor associado a uma chave em uma lista de pares (chave, valor (idenficador-valor, tipo) *)
                           (* ex: em um ambiente, com Vnum(7), retorna que é o valor 7 do tipo Vnum *)
   
                
     (* A função collectTyEqs É basicamente uma função que, dentro dela, tem uma recursiva collect, que faz o pattern matching entre as expressões e seus tipos *)
    
    
-    (* A função collect retorna um conjunto C de equações de tipo e um tipo T *)
+    (* A função collect retorna um conjunto C de equações de tipo e um tipo T possivelmente contendo variaveis de tipo *)
                
 let collectTyEqs env expr = let varCount = ref (-1) in
   
@@ -146,7 +149,7 @@ let collectTyEqs env expr = let varCount = ref (-1) in
     (* C-<Oper>, onde <Oper> é uma operação Int x Int -> Int *)
     | Oper ((Soma | Subt | Mult | Div), e1, e2) ->          
         let (t1, c1) = collect env e1 in          
-        let (t2, c2) = collect env e2 in
+        let (t2, c2) = collect env e2 in                    (* em expressões do tipo expr ,chamamos collect para e1 e para e2 *)
         (TyInt, c1 @ c2 @ [(t1, TyInt); (t2, TyInt)])
     
     (* C-<Oper>, onde <Oper> é uma operação Int x Int -> Bool *)
@@ -251,9 +254,8 @@ let collectTyEqs env expr = let varCount = ref (-1) in
     (* ETAPA 2 - DESMEMBRADA DO UNIFY DOS SLIDES *)
 
    
-   (* Objetivo - solucionar o conjunto C de equações de tipos  da etapa 1.• Se não houver como resolver o conjunto C de equações de tipos isso
-           significa que não é possivel satisfazer todas as restrições de tipo coletadas. O programa submetido é portanto, considerado mal tipado.
-*)
+   (* Objetivo - solucionar o conjunto C de equações de tipos retornado da etapa 1.• Se não houver como resolver o conjunto C de equações de tipos isso
+           significa que não é possivel satisfazer todas as restrições (constraints) de tipo coletadas. O programa submetido ao type infer é portanto, considerado mal tipado. *)
   
   
     (* ETAPA 2.1 - ALGORITMO DE SUBSTITUIÇÃO DE VARIAVEIS DE TIPO *)
@@ -374,7 +376,7 @@ let typeInfer env expr =                  (* Type Infer, que chama à coleta das
 exception NoRuleApplies 
 exception UndefinedIdentifier of ident
 
-let remove_tuple var list =                            (* No avaliador big step, utilizamos ambientes que guardam as substituições *)
+let remove_tuple var list =                            (* No avaliador big step, utilizamos ambientes que guardam as substituições de tipo *)
                                                         (* Um ambiente é um mapeamento de variáveis para valores *)
   List.filter (fun (k,_) -> k <> var) list
 
@@ -393,7 +395,7 @@ let empty_env : env = []
 
 let rec eval (env:env) (exp : expr) : value =	match exp with      (* Aqui temos a função recursiva eval, que avalia segundo as regras da big step utilizadas nos slides *)
 
-  (* Valores *)                                              (* Cabe relembrar que funções avaliam para closures - identificador, corpo, ambiente, como iremos ver nos exemplos *)
+  (* Valores *)                                              (* Cabe relembrar que funções (App, Fn) avaliam para closures - identificador, corpo, ambiente, como iremos ver nos exemplos *)
     Num(n) -> Vnum(n)
   | Bool(b) -> Vbool(b)
 
@@ -608,6 +610,11 @@ let evalEqAccept = eval environment eqAccept;;
 let eqReject = Oper(Ig,Num(2),Num(3));;
 let evalEqReject = eval environment eqReject;;
 
+(* BS-OP!=FLS *)
+let eqReject = Oper(Nig,Num(2),Num(3));;
+let evalEqAccept = eval environment eqReject;;
+
+
 
 	(* BS-OPANDTR *)
 let andTrue = Oper(And,Bool(true),Bool(true));;
@@ -801,3 +808,25 @@ eval empty_env exp;;
 (* BS-TLRS *)
 let exp = Tl(Raise);;
 eval empty_env exp;;
+
+
+
+(* TESTES TYPE_INFER *)
+
+
+(* TESTE MOODLE 1 *)
+let tst1 = Let("x",TyInt,Num(2),
+               Let("foo",TyFn(TyInt,TyInt),Fn("y",TyInt,Oper(Soma,VarIdent("x"),VarIdent("y"))),
+                   Let("x",TyInt,Num(5),App(VarIdent("foo"),Num(10)))));;
+
+typeInfer emptyEnvTyInf tst1;; 
+eval empty_env tst1;;
+
+
+(* TESTE MOODLE 2 *)
+let tst2 = Let("x",TyInt,Num(2),
+               Let("foo",TyFn(TyInt,TyInt),Fn("y",TyInt,Oper(Soma,VarIdent("x"),VarIdent("y"))),
+                   Let("x",TyInt,Num(5),VarIdent("foo"))));;
+
+typeInfer emptyEnvTyInf tst2;; 
+eval empty_env tst2;;
